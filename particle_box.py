@@ -5,7 +5,7 @@ from kivy.uix.label import Label
 from kivy.clock import Clock
 from kivy.uix.boxlayout import BoxLayout
 from kivy.app import App
-from kivy.graphics import Color, Ellipse
+from kivy.graphics import Color, Ellipse, Rectangle
 from kivy.core.window import Window
 
 from functools import partial
@@ -23,9 +23,8 @@ class Particle:
         self.id = id
         self.hover = False
 
-
-class EvoCanvasApp(App):
-    def check_collision(self, p1, p2):
+    def check_collision(self, p2):
+        p1 = self
         x1, y1 = p1.pos
         w1, h1 = p1.size
         x2, y2 = p2.pos
@@ -38,10 +37,40 @@ class EvoCanvasApp(App):
             return True
         return False
 
+
+class Block:
+    def __init__(self, x, y, w, h, id):
+        self.color = [rnd(), rnd(), rnd()]
+        self.faces = [(x, y + h/2), (x + w, y + h/2), (x + w/2, y), (x + w/2, y + h)]
+        self.normals = [(-1, 0), (1, 0), (0, -1), (0, 1)]
+        self.pos = [x, y]
+        self.size = (w, h)
+        self.id = id
+
+    def check_collision(self, p):
+        px, py = p.pos
+        pw, ph = p.size
+        bx, by = self.pos
+        bw, bh = self.size
+
+        if ((px + pw > bx and px + pw < bx + bw) or (px < bx + bw and px > bx)) and ((py + ph >= by and py + ph <= by + bh) or (py < by + bh and py > by)):
+            return True
+        return False
+        # if py + ph > by and py + ph < by + bh and (px + pw >= bx and px <= bx + bw):
+        #     p.vel[1] *= -1
+        #     p.pos[1] -= py + ph - by
+        # elif py < by + bh and py > by and (px + pw >= bx and px <= bx + bw):
+        #     p.vel[1] *= -1
+        #     p.pos[1] += by + bh - py
+
+
+class EvoCanvasApp(App):
     def draw(self):
         self.wid.canvas.clear()
-        self.label1.text = str(len(self.particles))
         with self.wid.canvas:
+            for i in self.blocks:
+                Color(*i.color)
+                Rectangle(pos=(i.pos[0] + self.wid.x, i.pos[1] + self.wid.y), size=i.size)
             for i in self.particles:
                 if i.hover or i.id == self.selected:
                     Color(1, 1, 1)
@@ -49,8 +78,8 @@ class EvoCanvasApp(App):
                 Color(*i.color)
                 Ellipse(pos=(i.pos[0] + self.wid.x, i.pos[1] + self.wid.y), size=i.size)
 
-    def collision(self, i, p1, p2):
-        if self.check_collision(p1, p2):
+    def p_collision(self, p1, p2):
+        if p1.check_collision(p2):
             m1 = p2.mass / p1.mass
             m2 = p1.mass / p2.mass
             vel_1_tmp = [m1 * p2.vel[0], m1 * p2.vel[1]]
@@ -76,14 +105,18 @@ class EvoCanvasApp(App):
             p1.pos = [p1.pos[0] + dx, p1.pos[1] + dy]
             p2.pos = [p2.pos[0] - dx, p2.pos[1] - dy]
 
-    def set_mouse_pos(self, p, dt=0):
-        self.pos_schedule.cancel()
-        self.prev_mouse = self.mouse[:]
-        self.mouse = p
-        self.pos_schedule = Clock.schedule_once(self.update_mouse, 0.1)
+    def b_collision(self, p, b):
+        if b.check_collision(p):
+            t = [(p.pos[0] + p.size[0] / 2 - i[0])**2 + (p.pos[1] + p.size[1] / 2 - i[1])**2 for i in b.faces]
+            n = b.normals[t.index(min(t))]
+            f = b.faces[t.index(min(t))]
 
-    def update_mouse(self, dt):
-        self.set_mouse_pos(self.mouse)
+            n_dot_v = n[0] * p.vel[0] + n[1] * p.vel[1]
+
+            p.vel[0] = p.vel[0] - 2*n[0]*n_dot_v
+            p.pos[0] += n[0] * min([abs(f[0] - p.pos[0]), abs(f[0] - p.pos[0] - p.size[0])])
+            p.vel[1] = p.vel[1] - 2*n[1]*n_dot_v
+            p.pos[1] += n[1] * min([abs(f[1] - p.pos[1]), abs(f[1] - p.pos[1] - p.size[1])])
 
     def tick(self, dt):
         self.update_window_size()
@@ -93,11 +126,14 @@ class EvoCanvasApp(App):
 
         for i, p1 in enumerate(self.particles):
             for p2 in self.particles[i:]:
-                self.collision(i, p1, p2)
+                self.p_collision(p1, p2)
+
+            for b in self.blocks:
+                self.b_collision(p1, b)
 
             mx = self.mouse[0] - self.wid.x
             my = self.mouse[1] - self.wid.y
-            if m.sqrt((mx - p1.pos[0] - p1.size[0] / 2)**2 + (my - p1.pos[1] - p1.size[1] / 2)**2) < p1.size[0]:
+            if m.sqrt((mx - p1.pos[0] - p1.size[0] / 2)**2 + (my - p1.pos[1] - p1.size[1] / 2)**2) < p1.size[0]:  # p1.size[0] / 2 for accuracy
                 p1.hover = True
                 if self.clicked and self.selected == -1:
                     self.selected = p1.id
@@ -133,10 +169,7 @@ class EvoCanvasApp(App):
 
     def add(self, n, *largs):
         self.particles += [Particle(rnd() * self.w, rnd() * self.h, self.speed, self.size, len(self.particles) + i, self.w, self.h) for i in range(n)]
-
-    def update_window_size(self):
-        self.w, self.h = Window.size
-        self.h -= 50
+        self.label1.text = str(len(self.particles))
 
     def sub(self, n, *largs):
         if not n:
@@ -145,6 +178,20 @@ class EvoCanvasApp(App):
             self.particles = self.particles[:-n]
         else:
             self.particles = []
+        self.label1.text = str(len(self.particles))
+
+    def set_mouse_pos(self, p, dt=0):
+        self.pos_schedule.cancel()
+        self.prev_mouse = self.mouse[:]
+        self.mouse = p
+        self.pos_schedule = Clock.schedule_once(self.update_mouse, 0.1)
+
+    def update_mouse(self, dt):
+        self.set_mouse_pos(self.mouse)
+
+    def update_window_size(self):
+        self.w, self.h = Window.size
+        self.h -= 50
 
     def on_mouse_down(self, *args):
         self.clicked = True
@@ -180,24 +227,22 @@ class EvoCanvasApp(App):
         self.pos_schedule = Clock.schedule_once(self.update_mouse, 0.1)
         self.update_window_size()
 
+        self.blocks = [Block(200, 200, 200, 200, 0)]
+
         self.particles = []
-        self.add(100)
 
         self.wid = Widget(size=(self.w, self.h))
 
         self.label1 = Label(text='0')
         self.label2 = Label(text='0 FPS')
 
-        btn_add = Button(text='+ 10', on_press=partial(self.add, 10))
-        btn_add1 = Button(text='+ 1', on_press=partial(self.add, 1))
-        btn_sub = Button(text='- 10', on_press=partial(self.sub, 10))
-        btn_clear = Button(text='Clear', on_press=partial(self.sub, 0))
+        self.add(100)
 
         layout = BoxLayout(size_hint=(1, None), height=50)
-        layout.add_widget(btn_add)
-        layout.add_widget(btn_add1)
-        layout.add_widget(btn_sub)
-        layout.add_widget(btn_clear)
+        layout.add_widget(Button(text='+ 10', on_press=partial(self.add, 10)))
+        layout.add_widget(Button(text='+ 1', on_press=partial(self.add, 1)))
+        layout.add_widget(Button(text='- 10', on_press=partial(self.sub, 10)))
+        layout.add_widget(Button(text='Clear', on_press=partial(self.sub, 0)))
         layout.add_widget(self.label1)
         layout.add_widget(self.label2)
 
