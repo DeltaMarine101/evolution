@@ -34,7 +34,7 @@ class EvoCanvasApp(App):
         # if ((x1 + w1 >= x2 and x1 <= x2) or (x1 + w1 <= x2 + w2 and x1 >= x2 + w2)) and ((y1 + h1 >= y2 and y1 <= y2) or (y1 + h1 <= y2 + h2 and y1 >= y2 + h2)):
         #     return True
         r = (w1 + w2) / 2
-        if m.sqrt((x1 + w1 / 2 - x2 - w2 / 2)**2 + (y1 + h1 / 2 - y2 - h2 / 2)**2) <= r:
+        if m.sqrt((x1 - x2 + (w1 - w2) / 2)**2 + (y1 - y2 + (h1 - h2) / 2)**2) <= r:
             return True
         return False
 
@@ -44,7 +44,7 @@ class EvoCanvasApp(App):
         with self.wid.canvas:
             for i in self.particles:
                 if i.hover or i.id == self.selected:
-                    Color(255, 255, 255)
+                    Color(1, 1, 1)
                     Ellipse(pos=(i.pos[0] + self.wid.x - 2, i.pos[1] + self.wid.y - 2), size=(i.size[0] + 4, i.size[1] + 4))
                 Color(*i.color)
                 Ellipse(pos=(i.pos[0] + self.wid.x, i.pos[1] + self.wid.y), size=i.size)
@@ -70,24 +70,11 @@ class EvoCanvasApp(App):
             else:
                 g = m.pi * (-1, 1)[y1 > y2] / 2
 
-            d = (w1 + w2) / 2 - m.sqrt((x1 + w1 / 2 - x2 - w2 / 2)**2 + (y1 + h1 / 2 - y2 - h2 / 2)**2)
-            dx = m.cos(g) * d * (1, -1)[x2 > x1] / 2
-            dy = m.sin(g) * d * (1, -1)[y2 > y1] / 2
+            d = ((w1 + w2) / 2 - m.sqrt((x1 + w1 / 2 - x2 - w2 / 2)**2 + (y1 + h1 / 2 - y2 - h2 / 2)**2)) / 2
+            dx = m.cos(g) * d * (1, -1)[x2 > x1]
+            dy = m.sin(g) * d * (1, -1)[y2 > y1]
             p1.pos = [p1.pos[0] + dx, p1.pos[1] + dy]
             p2.pos = [p2.pos[0] - dx, p2.pos[1] - dy]
-
-            mx = self.mouse[0] - self.wid.x
-            my = self.mouse[1] - self.wid.y
-            if m.sqrt((mx - p1.pos[0] - p1.size[0] / 2)**2 + (my - p1.pos[1] - p1.size[1] / 2)**2) < p1.size[0]:
-                p1.hover = True
-                if self.clicked and self.selected == -1:
-                    self.selected = p1.id
-                    self.clicked = False
-            else:
-                p1.hover = False
-
-            if self.selected == p1.id or self.ctrl:
-                p1.vel = [self.mouse[0] - self.prev_mouse[0], self.mouse[1] - self.prev_mouse[1]]
 
     def set_mouse_pos(self, p, dt=0):
         self.pos_schedule.cancel()
@@ -101,9 +88,25 @@ class EvoCanvasApp(App):
     def tick(self, dt):
         self.update_window_size()
 
+        def d(val):
+            return m.sqrt((val.pos[0])**2 + (val.pos[1])**2)
+
         for i, p1 in enumerate(self.particles):
             for p2 in self.particles[i:]:
                 self.collision(i, p1, p2)
+
+            mx = self.mouse[0] - self.wid.x
+            my = self.mouse[1] - self.wid.y
+            if m.sqrt((mx - p1.pos[0] - p1.size[0] / 2)**2 + (my - p1.pos[1] - p1.size[1] / 2)**2) < p1.size[0]:
+                p1.hover = True
+                if self.clicked and self.selected == -1:
+                    self.selected = p1.id
+                    self.clicked = False
+            else:
+                p1.hover = False
+
+            if self.selected == p1.id or self.ctrl:
+                p1.vel = [self.mouse[0] - self.prev_mouse[0], self.mouse[1] - self.prev_mouse[1]]
 
             p1.pos = [p1.pos[0] + p1.vel[0], p1.pos[1] + p1.vel[1]]
 
@@ -166,7 +169,7 @@ class EvoCanvasApp(App):
         self.clicked = False
         self.selected = -1
         self.speed = 3
-        self.size = 40
+        self.size = 20
         self.mouse = (0, 0)
         self.ctrl = False
         Window.bind(mouse_pos=lambda w, p: self.set_mouse_pos(p))
