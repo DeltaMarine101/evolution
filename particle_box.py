@@ -7,20 +7,21 @@ from kivy.uix.boxlayout import BoxLayout
 from kivy.app import App
 from kivy.graphics import Color, Ellipse
 from kivy.core.window import Window
-from functools import partial
 
+from functools import partial
 from random import random as rnd
 import math as m
 
 
 class Particle:
-    def __init__(self, x, y, speed, size, id):
-        self.color = [rnd(), rnd(), rnd()]
+    def __init__(self, x, y, speed, size, id, w, h):
+        self.color = [x / w, y / w, 1]
         self.pos = [x, y]
         self.vel = [2 * (rnd() - 0.5) * speed, 2 * (rnd() - 0.5) * speed]
         self.mass = size * (rnd() + 1)
         self.size = (self.mass, self.mass)
         self.id = id
+        self.hover = False
 
 
 class EvoCanvasApp(App):
@@ -42,9 +43,10 @@ class EvoCanvasApp(App):
         self.label1.text = str(len(self.particles))
         with self.wid.canvas:
             for i in self.particles:
-                Color(*i.color)
-                if m.sqrt((self.mouse[0] - self.wid.x - i.pos[0])**2 + (self.mouse[1] - self.wid.y - i.pos[1])**2) < i.size[0]:
+                if i.hover or i.id == self.selected:
                     Color(255, 255, 255)
+                    Ellipse(pos=(i.pos[0] + self.wid.x - 2, i.pos[1] + self.wid.y - 2), size=(i.size[0] + 4, i.size[1] + 4))
+                Color(*i.color)
                 Ellipse(pos=(i.pos[0] + self.wid.x, i.pos[1] + self.wid.y), size=i.size)
 
     def collision(self, i, p1, p2):
@@ -74,8 +76,27 @@ class EvoCanvasApp(App):
             p1.pos = [p1.pos[0] + dx, p1.pos[1] + dy]
             p2.pos = [p2.pos[0] - dx, p2.pos[1] - dy]
 
-    def set_mouse_pos(self, p):
+            mx = self.mouse[0] - self.wid.x
+            my = self.mouse[1] - self.wid.y
+            if m.sqrt((mx - p1.pos[0] - p1.size[0] / 2)**2 + (my - p1.pos[1] - p1.size[1] / 2)**2) < p1.size[0]:
+                p1.hover = True
+                if self.clicked and self.selected == -1:
+                    self.selected = p1.id
+                    self.clicked = False
+            else:
+                p1.hover = False
+
+            if self.selected == p1.id or self.ctrl:
+                p1.vel = [self.mouse[0] - self.prev_mouse[0], self.mouse[1] - self.prev_mouse[1]]
+
+    def set_mouse_pos(self, p, dt=0):
+        self.pos_schedule.cancel()
+        self.prev_mouse = self.mouse[:]
         self.mouse = p
+        self.pos_schedule = Clock.schedule_once(self.update_mouse, 0.1)
+
+    def update_mouse(self, dt):
+        self.set_mouse_pos(self.mouse)
 
     def tick(self, dt):
         self.update_window_size()
@@ -103,11 +124,12 @@ class EvoCanvasApp(App):
 
         if dt:
             self.label2.text = str(int(1/dt)) + ' FPS'
+
         self.dt = dt
         Clock.schedule_once(self.tick)
 
     def add(self, n, *largs):
-        self.particles += [Particle(rnd() * self.w, rnd() * self.h, self.speed, self.size, len(self.particles)) for _ in range(n)]
+        self.particles += [Particle(rnd() * self.w, rnd() * self.h, self.speed, self.size, len(self.particles) + i, self.w, self.h) for i in range(n)]
 
     def update_window_size(self):
         self.w, self.h = Window.size
@@ -121,14 +143,42 @@ class EvoCanvasApp(App):
         else:
             self.particles = []
 
+    def on_mouse_down(self, *args):
+        self.clicked = True
+
+    def on_mouse_up(self, *args):
+        for i in self.particles:
+            if i.id == self.selected:
+                i.vel[0] = self.mouse[0] - self.prev_mouse[0]
+                i.vel[1] = self.mouse[1] - self.prev_mouse[1]
+        self.clicked = False
+        self.selected = -1
+
+    def on_key_down(self, *args):
+        if args[1] == 305:
+            self.ctrl = True
+
+    def on_key_up(self, *args):
+        if args[1] == 305:
+            self.ctrl = False
+
     def build(self):
+        self.clicked = False
+        self.selected = -1
         self.speed = 3
-        self.size = 20
+        self.size = 40
         self.mouse = (0, 0)
+        self.ctrl = False
         Window.bind(mouse_pos=lambda w, p: self.set_mouse_pos(p))
+        Window.bind(on_touch_down=self.on_mouse_down)
+        Window.bind(on_touch_up=self.on_mouse_up)
+        Window.bind(on_key_down=self.on_key_down)
+        Window.bind(on_key_up=self.on_key_up)
+        self.pos_schedule = Clock.schedule_once(self.update_mouse, 0.1)
         self.update_window_size()
 
-        self.particles = [Particle(rnd() * self.w, rnd() * self.h, self.speed, self.size, i) for i in range(30)]
+        self.particles = []
+        self.add(100)
 
         self.wid = Widget(size=(self.w, self.h))
 
