@@ -1,4 +1,3 @@
-
 from kivy.uix.button import Button
 from kivy.uix.widget import Widget
 from kivy.uix.label import Label
@@ -17,30 +16,26 @@ class Particle:
     def __init__(self, x, y, speed, size, id, w, h):
         self.color = [x / w, y / w, 1]
         self.pos = [x, y]
-        self.vel = [2 * (rnd() - 0.5) * speed, 2 * (rnd() - 0.5) * speed]
+        self.vel = [(2 * rnd() - 1) * speed, (2 * rnd() - 1) * speed]
         self.mass = size * (rnd() + 1)
         self.size = (self.mass, self.mass)
         self.id = id
         self.hover = False
 
-    def check_collision(self, p2):
-        p1 = self
-        x1, y1 = p1.pos
-        w1, h1 = p1.size
-        x2, y2 = p2.pos
-        w2, h2 = p2.size
+    def check_collision(self, p):
+        x1, y1 = self.pos
+        w1, h1 = self.size
+        x2, y2 = p.pos
+        w2, h2 = p.size
 
-        # if ((x1 + w1 >= x2 and x1 <= x2) or (x1 + w1 <= x2 + w2 and x1 >= x2 + w2)) and ((y1 + h1 >= y2 and y1 <= y2) or (y1 + h1 <= y2 + h2 and y1 >= y2 + h2)):
-        #     return True
-        r = (w1 + w2) / 2
-        if m.sqrt((x1 - x2 + (w1 - w2) / 2)**2 + (y1 - y2 + (h1 - h2) / 2)**2) <= r:
+        if (x1 - x2 + (w1 - w2) / 2)**2 + (y1 - y2 + (h1 - h2) / 2)**2 <= (w1 + w2)**2 / 4:
             return True
         return False
 
 
 class Block:
     def __init__(self, x, y, w, h, id):
-        self.color = [rnd(), rnd(), rnd()]
+        self.color = [rnd(), rnd(), 1]
         self.faces = [(x, y + h/2), (x + w, y + h/2), (x + w/2, y), (x + w/2, y + h)]
         self.normals = [(-1, 0), (1, 0), (0, -1), (0, 1)]
         self.pos = [x, y]
@@ -53,15 +48,15 @@ class Block:
         bx, by = self.pos
         bw, bh = self.size
 
-        if ((px + pw > bx and px + pw < bx + bw) or (px < bx + bw and px > bx)) and ((py + ph >= by and py + ph <= by + bh) or (py < by + bh and py > by)):
-            return True
-        return False
-        # if py + ph > by and py + ph < by + bh and (px + pw >= bx and px <= bx + bw):
-        #     p.vel[1] *= -1
-        #     p.pos[1] -= py + ph - by
-        # elif py < by + bh and py > by and (px + pw >= bx and px <= bx + bw):
-        #     p.vel[1] *= -1
-        #     p.pos[1] += by + bh - py
+        if px > bx + bw:
+            return False
+        if px + pw < bx:
+            return False
+        if py > by + bh:
+            return False
+        if py + ph < by:
+            return False
+        return True
 
 
 class EvoCanvasApp(App):
@@ -80,26 +75,23 @@ class EvoCanvasApp(App):
 
     def p_collision(self, p1, p2):
         if p1.check_collision(p2):
-            m1 = p2.mass / p1.mass
-            m2 = p1.mass / p2.mass
-            vel_1_tmp = [m1 * p2.vel[0], m1 * p2.vel[1]]
-            vel_2_tmp = [m2 * p1.vel[0], m2 * p1.vel[1]]
-
-            p1.vel, p2.vel = vel_1_tmp, vel_2_tmp
-
-            dx = 0
-            dy = 0
             x1, y1 = p1.pos
-            w1, h1 = p1.size
             x2, y2 = p2.pos
+            w1, h1 = p1.size
             w2, h2 = p2.size
 
-            if x1 != x2:
-                g = m.atan(abs(y1-y2)/abs(x1-x2))
+            m1 = p2.mass / p1.mass
+            m2 = p1.mass / p2.mass
+
+            print("pew", p1.pos[0])
+            p1.vel, p2.vel = [m1 * p2.vel[0] * self.e_loss, m1 * p2.vel[1] * self.e_loss], [m2 * p1.vel[0] * self.e_loss, m2 * p1.vel[1] * self.e_loss]
+
+            if x1 != p2.pos[0]:
+                g = m.atan(abs(y1 - y2) / abs(x1 - x2))
             else:
                 g = m.pi * (-1, 1)[y1 > y2] / 2
 
-            d = ((w1 + w2) / 2 - m.sqrt((x1 + w1 / 2 - x2 - w2 / 2)**2 + (y1 + h1 / 2 - y2 - h2 / 2)**2)) / 2
+            d = ((h1 + h2) / 2 - m.sqrt((x1 - x2 + (w1 - w2) / 2)**2 + (y1 - y2 + (h1 - h2) / 2)**2)) / 2
             dx = m.cos(g) * d * (1, -1)[x2 > x1]
             dy = m.sin(g) * d * (1, -1)[y2 > y1]
             p1.pos = [p1.pos[0] + dx, p1.pos[1] + dy]
@@ -113,19 +105,30 @@ class EvoCanvasApp(App):
 
             n_dot_v = n[0] * p.vel[0] + n[1] * p.vel[1]
 
-            p.vel[0] = p.vel[0] - 2*n[0]*n_dot_v
-            p.pos[0] += n[0] * min([abs(f[0] - p.pos[0]), abs(f[0] - p.pos[0] - p.size[0])])
-            p.vel[1] = p.vel[1] - 2*n[1]*n_dot_v
-            p.pos[1] += n[1] * min([abs(f[1] - p.pos[1]), abs(f[1] - p.pos[1] - p.size[1])])
+            p.vel[0] = (p.vel[0] - 2 * n[0] * n_dot_v) * self.e_loss
+            p.pos[0] += n[0] * (min([abs(f[0] - p.pos[0]), abs(f[0] - p.pos[0] - p.size[0])]) + 1)
+            p.vel[1] = (p.vel[1] - 2 * n[1] * n_dot_v) * self.e_loss
+            p.pos[1] += n[1] * (min([abs(f[1] - p.pos[1]), abs(f[1] - p.pos[1] - p.size[1])]) + 1)
+
+    def wall_collision(self, p1):
+        if p1.pos[0] + p1.size[0] > self.w:
+            p1.vel[0] *= -1 * self.e_loss
+            p1.pos[0] -= p1.pos[0] + p1.size[0] - self.w
+        elif p1.pos[0] < 0:
+            p1.vel[0] *= -1 * self.e_loss
+            p1.pos[0] -= p1.pos[0]
+        if p1.pos[1] + p1.size[1] > self.h:
+            p1.vel[1] *= -1 * self.e_loss
+            p1.pos[1] -= p1.pos[1] + p1.size[1] - self.h
+        elif p1.pos[1] < 0:
+            p1.vel[1] *= -1 * self.e_loss
+            p1.pos[1] -= p1.pos[1]
 
     def tick(self, dt):
         self.update_window_size()
 
-        def d(val):
-            return m.sqrt((val.pos[0])**2 + (val.pos[1])**2)
-
         for i, p1 in enumerate(self.particles):
-            for p2 in self.particles[i:]:
+            for p2 in self.particles[i + 1:]:
                 self.p_collision(p1, p2)
 
             for b in self.blocks:
@@ -146,18 +149,11 @@ class EvoCanvasApp(App):
 
             p1.pos = [p1.pos[0] + p1.vel[0], p1.pos[1] + p1.vel[1]]
 
-            if p1.pos[0] + p1.size[0] > self.w:
-                p1.vel[0] *= -1
-                p1.pos[0] -= p1.pos[0] + p1.size[0] - self.w
-            elif p1.pos[0] < 0:
-                p1.vel[0] *= -1
-                p1.pos[0] -= p1.pos[0]
-            if p1.pos[1] + p1.size[1] > self.h:
-                p1.vel[1] *= -1
-                p1.pos[1] -= p1.pos[1] + p1.size[1] - self.h
-            elif p1.pos[1] < 0:
-                p1.vel[1] *= -1
-                p1.pos[1] -= p1.pos[1]
+            self.wall_collision(p1)
+
+            if self.grav:
+                p1.vel[1] -= 0.2
+                p1.vel[1] *= self.inelasticity
 
         self.draw()
 
@@ -207,18 +203,29 @@ class EvoCanvasApp(App):
     def on_key_down(self, *args):
         if args[1] == 305:
             self.ctrl = True
+        if args[1] == 304:
+            self.grav = True
+        if args[1] == 308:
+            self.e_loss = self.inelasticity
 
     def on_key_up(self, *args):
         if args[1] == 305:
             self.ctrl = False
+        if args[1] == 304:
+            self.grav = False
+        if args[1] == 308:
+            self.e_loss = 1
 
     def build(self):
         self.clicked = False
         self.selected = -1
         self.speed = 3
         self.size = 20
+        self.inelasticity = 0.95
+        self.grav = False
         self.mouse = (0, 0)
         self.ctrl = False
+        self.e_loss = 1
         Window.bind(mouse_pos=lambda w, p: self.set_mouse_pos(p))
         Window.bind(on_touch_down=self.on_mouse_down)
         Window.bind(on_touch_up=self.on_mouse_up)
