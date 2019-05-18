@@ -1,4 +1,4 @@
-# physics-simulation
+# Physics simulation
 
 This is a simple particle physics simulation made out of personal interest.
 
@@ -16,3 +16,4 @@ You need to install [Kivy](https://kivy.org/doc/stable/installation/installation
 - Hold Shift to enable gravity
 - Hold Alt to enable inelastic collisions (energy loss)
 - Resizing the window will act like squeezing or expanding the particle container
+- Hold 'n' to see normals on polygon surfaces
