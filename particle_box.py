@@ -121,14 +121,40 @@ class Polygon3:
             d2 = abs(x2 - px)
             l2 = abs(y2 - py)
 
+        hit = [0, 0, 0]
         w0 = m.sqrt((self.vertex[0][0] - self.vertex[1][0])**2 + (self.vertex[0][1] - self.vertex[1][1])**2)
         if d0 <= pw / 2 and l0 <= w0 / 2 + pw / 2:
-            return (0, pw / 2 - d0 + 1)
+            hit[0] = 1
         w1 = m.sqrt((self.vertex[1][0] - self.vertex[2][0])**2 + (self.vertex[1][1] - self.vertex[2][1])**2)
         if d1 <= pw / 2 and l1 <= w1 / 2 + pw / 2:
-            return (1, pw / 2 - d1 + 1)
+            hit[1] = 1
         w2 = m.sqrt((self.vertex[0][0] - self.vertex[2][0])**2 + (self.vertex[0][1] - self.vertex[2][1])**2)
         if d2 <= pw / 2 and l2 <= w2 / 2 + pw / 2:
+            hit[2] = 1
+        s = sum(hit)
+        if s == 0:
+            return False
+        if s == 1:
+            if hit[0]:
+                return (0, pw / 2 - d0 + 1)
+            if hit[1]:
+                return (1, pw / 2 - d1 + 1)
+            return (2, pw / 2 - d2 + 1)
+
+        n0 = self.normal[0]
+        n1 = self.normal[1]
+        n2 = self.normal[2]
+        if hit[0] and hit[1]:
+            if n0[0] * p.vel[0] + n0[1] * p.vel[1] < n1[0] * p.vel[0] + n1[1] * p.vel[1]:
+                return (0, pw / 2 - d0 + 1)
+            return (1, pw / 2 - d1 + 1)
+        if hit[1] and hit[2]:
+            if n1[0] * p.vel[0] + n1[1] * p.vel[1] < n2[0] * p.vel[0] + n2[1] * p.vel[1]:
+                return (1, pw / 2 - d1 + 1)
+            return (2, pw / 2 - d2 + 1)
+        if hit[2] and hit[0]:
+            if n2[0] * p.vel[0] + n2[1] * p.vel[1] < n0[0] * p.vel[0] + n0[1] * p.vel[1]:
+                return (0, pw / 2 - d0 + 1)
             return (2, pw / 2 - d2 + 1)
 
 class ParticleBox(App):
