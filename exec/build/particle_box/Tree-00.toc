@@ -1,0 +1,8 @@
+('../src',
+ None,
+ [],
+ 'DATA',
+ [('particle_box.py', '../src\\particle_box.py', 'DATA'),
+  ('__pycache__\\particle_box.cpython-37.pyc',
+   '../src\\__pycache__\\particle_box.cpython-37.pyc',
+   'DATA')])
