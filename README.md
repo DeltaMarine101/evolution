@@ -17,3 +17,4 @@ You need to install [Kivy](https://kivy.org/doc/stable/installation/installation
 - Hold Alt to enable inelastic collisions (energy loss)
 - Resizing the window will act like squeezing or expanding the particle container
 - Hold 'n' to see normals on polygon surfaces
+- Hit 'p' to turn on polygon drawing, click points to create an enclosed shape
