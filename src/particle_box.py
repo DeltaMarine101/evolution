@@ -41,9 +41,18 @@ class Polygon:
         self.color = [rnd(), rnd(), 1]
         self.vertex = pts[:]
         self.normal = []
+
+        area = 0
         for i in range(len(pts)):
             j = (i + 1) % len(pts)
-            norm = m.sqrt((pts[i][0] - pts[j][0])**2 + (pts[i][1] - pts[j][1])**2)
+            area += (pts[j][0] - pts[i][0]) * (pts[j][1] + pts[i][1])
+        direct = 1
+        if area > 0:
+            direct = -1
+
+        for i in range(len(pts)):
+            j = (i + 1) % len(pts)
+            norm = m.sqrt((pts[i][0] - pts[j][0])**2 + (pts[i][1] - pts[j][1])**2) * direct
             self.normal += [((pts[j][1] - pts[i][1]) / norm, (pts[i][0] - pts[j][0]) / norm)]
 
         self.id = id
@@ -88,7 +97,7 @@ class Polygon:
             if s > 1:
                 j = (i + 1) % len(self.vertex)
                 if hit[i] and hit[j]:
-                    if self.normal[i][0]*p.vel[0] + self.normal[i][1]*p.vel[1] < self.normal[j][0]*p.vel[0] + self.normal[j][1]*p.vel[1]:
+                    if self.normal[i][0]*p.vel[0]+self.normal[i][1]*p.vel[1] < self.normal[j][0]*p.vel[0]+self.normal[j][1]*p.vel[1]:
                         return (i, 1)
                     return (j, 1)
 
@@ -108,9 +117,9 @@ class ParticleBox(App):
                         Line(points=[(t.vertex[i][0] + t.vertex[j][0]) / 2 + self.wid.x,
                                        (t.vertex[i][1] + t.vertex[j][1]) / 2 + self.wid.y,
                                        (t.vertex[i][0] + t.vertex[j][0]) / 2 + t.normal[i][0] * 20 + self.wid.x,
-                                       (t.vertex[i][1] + t.vertex[j][1]) / 2 + t.normal[i][1] * 20 + self.wid.y], width=2)
+                                       (t.vertex[i][1] + t.vertex[j][1]) / 2 + t.normal[i][1] * 20 + self.wid.y], width=1)
                 Color(*t.color)
-                Mesh(vertices=p, indices=indices, mode='triangle_fan')
+                Mesh(vertices=p, indices=indices, mode='line_loop')
 
             for i in self.particles:
                 if i.hover or i.id == self.selected:
@@ -118,6 +127,17 @@ class ParticleBox(App):
                     Ellipse(pos=(i.pos[0] + self.wid.x - 2, i.pos[1] + self.wid.y - 2), size=(i.size[0] + 4, i.size[1] + 4))
                 Color(*i.color)
                 Ellipse(pos=(i.pos[0] + self.wid.x, i.pos[1] + self.wid.y), size=i.size)
+
+            if self.poly_build:
+                p = []
+                for i in self.poly_points:
+                    p += [i[0] + self.wid.x, i[1] + self.wid.y]
+                Color((1, 1, 1))
+                Line(points=p, width=1)
+                if len(self.poly_points) == 1:
+                    Ellipse(pos=(self.poly_points[0][0] + self.wid.x, self.poly_points[0][1] + self.wid.y), size=(5, 5))
+
+                Ellipse(pos=(self.mouse[0], self.mouse[1]), size=(5, 5))
 
     def p_collision(self, p1, p2):
         if p1.check_collision(p2):
@@ -182,7 +202,8 @@ class ParticleBox(App):
 
             mx = self.mouse[0] - self.wid.x
             my = self.mouse[1] - self.wid.y
-            if m.sqrt((mx - p1.pos[0] - p1.size[0] / 2)**2 + (my - p1.pos[1] - p1.size[1] / 2)**2) < p1.size[0]:  # p1.size[0] / 2 for accuracy
+            if m.sqrt((mx - p1.pos[0] - p1.size[0] / 2)**2 + (my - p1.pos[1] - p1.size[1] / 2)**2) < p1.size[0]:
+                 # p1.size[0] / 2 for accuracy
                 p1.hover = True
                 if self.clicked and self.selected == -1:
                     self.selected = p1.id
@@ -238,6 +259,15 @@ class ParticleBox(App):
 
     def on_mouse_down(self, *args):
         self.clicked = True
+        if self.poly_build:
+            if len(self.poly_points):
+                if (self.poly_points[0][0] - self.mouse[0] + self.wid.x)**2 + (
+                    self.poly_points[0][1] - self.mouse[1] + self.wid.y)**2 < 100:
+                    self.poly_build = False
+                    self.polygons += [Polygon(self.poly_points, len(self.polygons))]
+                    self.poly_points = []
+                    return
+            self.poly_points += [(self.mouse[0] - self.wid.x, self.mouse[1] - self.wid.y)]
 
     def on_mouse_up(self, *args):
         for i in self.particles:
@@ -256,6 +286,9 @@ class ParticleBox(App):
             self.e_loss = self.inelasticity
         if args[1] == 110:
             self.show_norms = True
+        if args[1] == 112:
+            self.poly_build = not self.poly_build
+            self.poly_points = []
 
     def on_key_up(self, *args):
         if args[1] == 305:
@@ -278,6 +311,9 @@ class ParticleBox(App):
         self.ctrl = False
         self.e_loss = 1
         self.show_norms = False
+        self.poly_build = False
+        self.poly_points = []
+
         Window.bind(mouse_pos=lambda w, p: self.set_mouse_pos(p))
         Window.bind(on_touch_down=self.on_mouse_down)
         Window.bind(on_touch_up=self.on_mouse_up)
@@ -286,19 +322,20 @@ class ParticleBox(App):
         self.pos_schedule = Clock.schedule_once(self.update_mouse, 0.1)
         self.update_window_size()
 
-        self.polygons = [Polygon([(200, 200), (250, 200), (200, 250)], 0),
-                          Polygon([(400, 400), (480, 420), (380, 450)], 1),
-                          Polygon([(560, 50), (680, 120), (550, 250)], 1),
-                          Polygon([(100, 100), (150, 50), (200, 100), (200, 130), (100, 130)], 1)]
-
-        self.particles = []
-
-        self.wid = Widget(size=(self.w, self.h))
+        # Add static meshes here
+        # self.polygons = [Polygon([(200, 200), (250, 200), (200, 250)], 0),
+        #                  Polygon([(400, 400), (480, 420), (380, 450)], 1),
+        #                  Polygon([(560, 50), (680, 120), (550, 250)], 1),
+        #                  Polygon([(100, 100), (150, 50), (200, 100), (200, 130), (100, 130)], 1)]
+        self.polygons = []
 
         self.label1 = Label(text='0')
         self.label2 = Label(text='0 FPS')
 
+        self.particles = []
         self.add(100)
+
+        self.wid = Widget(size=(self.w, self.h))
 
         layout = BoxLayout(size_hint=(1, None), height=50)
         layout.add_widget(Button(text='+ 10', on_press=partial(self.add, 10)))
