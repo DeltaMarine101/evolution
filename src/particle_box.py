@@ -1,12 +1,15 @@
+## python -m PyInstaller particle_box.spec
+
 from kivy.uix.button import Button
 from kivy.uix.widget import Widget
 from kivy.uix.label import Label
 from kivy.clock import Clock
 from kivy.uix.boxlayout import BoxLayout
 from kivy.app import App
-from kivy.graphics import Color, Ellipse, Rectangle, Triangle, Bezier
+from kivy.graphics import Color, Ellipse, Rectangle, Mesh, Line
 from kivy.core.window import Window
 
+import threading
 from functools import partial
 from random import random as rnd
 import math as m
@@ -33,156 +36,82 @@ class Particle:
         return False
 
 
-class Block:
-    def __init__(self, x, y, w, h, id):
+class Polygon:
+    def __init__(self, pts, id):
         self.color = [rnd(), rnd(), 1]
-        self.faces = [[x, y + h/2], [x + w, y + h/2], [x + w/2, y], [x + w/2, y + h]]
-        self.normal = [(-1, 0), (1, 0), (0, -1), (0, 1)]
-        self.pos = [x, y]
-        self.size = (w, h)
-        self.id = id
+        self.vertex = pts[:]
+        self.normal = []
+        for i in range(len(pts)):
+            j = (i + 1) % len(pts)
+            norm = m.sqrt((pts[i][0] - pts[j][0])**2 + (pts[i][1] - pts[j][1])**2)
+            self.normal += [((pts[j][1] - pts[i][1]) / norm, (pts[i][0] - pts[j][0]) / norm)]
 
-    def check_collision(self, p):
-        px, py = p.pos
-        pw, ph = p.size
-        bx, by = self.pos
-        bw, bh = self.size
-
-        if px > bx + bw:
-            return False
-        if px + pw < bx:
-            return False
-        if py > by + bh:
-            return False
-        if py + ph < by:
-            return False
-        return True
-
-
-class Polygon3:
-    def __init__(self, x0, y0, x1, y1, x2, y2, id):
-        self.color = [rnd(), rnd(), 1]
-        self.vertex = [[x0, y0], [x1, y1], [x2, y2]]
-        norm = [m.sqrt((x0 - x1)**2 + (y0 - y1)**2), m.sqrt((x1 - x2)**2 + (y1 - y2)**2), m.sqrt((x2 - x0)**2 + (y2 - y0)**2)]
-        self.normal = [((y1 - y0) / norm[0], (x0 - x1) / norm[0]),
-                        ((y2 - y1) / norm[1], (x1 - x2) / norm[1]),
-                        ((y0 - y2) / norm[2], (x2 - x0) / norm[2])]
         self.id = id
 
     def check_collision(self, p):
         pw, ph = p.size
         px, py = p.pos[0] + pw / 2, p.pos[1] + ph / 2
 
-        x0, y0 = (self.vertex[0][0] + self.vertex[1][0]) / 2, (self.vertex[0][1] + self.vertex[1][1]) / 2
-        if self.normal[0][1] != 0:
-            m_1 = - self.normal[0][0] / self.normal[0][1]
-            b = self.vertex[0][1] - m_1 * self.vertex[0][0]
-            d0 = abs(-m_1 * px + py - b) / m.sqrt(1 + m_1**2)
+        d = []
+        l = []
+        hit = []
+        for i in range(len(self.vertex)):
+            j = (i + 1) % len(self.vertex)
+            x0, y0 = (self.vertex[i][0] + self.vertex[j][0]) / 2, (self.vertex[i][1] + self.vertex[j][1]) / 2
+            if self.normal[i][1] != 0:
+                m_1 = - self.normal[i][0] / self.normal[i][1]
+                b_2 = self.vertex[i][1] - m_1 * self.vertex[i][0]
+                d += [abs(-m_1 * px + py - b_2) / m.sqrt(1 + m_1**2)]
 
-            if m_1 != 0:
-                m_2 = -1 / m_1
-                b_2 = y0 - m_2 * x0
-                l0 = abs(-m_2 * px + py - b_2) / m.sqrt(1 + m_2**2)
+                if m_1 != 0:
+                    m_2 = -1 / m_1
+                    b_2 = y0 - m_2 * x0
+                    l += [abs(-m_2 * px + py - b_2) / m.sqrt(1 + m_2**2)]
+                else:
+                    l += [abs(x0 - px)]
             else:
-                l0 = abs(x0 - px)
-        else:
-            d0 = abs(x0 - px)
-            l0 = abs(y0 - py)
+                d += [abs(x0 - px)]
+                l += [abs(y0 - py)]
 
-        x1, y1 = (self.vertex[1][0] + self.vertex[2][0]) / 2, (self.vertex[1][1] + self.vertex[2][1]) / 2
-        if self.normal[1][1] != 0:
-            m_1 = - self.normal[1][0] / self.normal[1][1]
-            b = self.vertex[1][1] - m_1 * self.vertex[1][0]
-            d1 = abs(-m_1 * px + py - b) / m.sqrt(1 + m_1**2)
+            w = m.sqrt((self.vertex[i][0] - self.vertex[j][0])**2 + (self.vertex[i][1] - self.vertex[j][1])**2)
+            hit += [0]
+            if d[i] <= pw / 2 and l[i] <= w / 2 + pw / 2:
+                hit[i] = 1
 
-            if m_1 != 0:
-                m_2 = -1 / m_1
-                b_2 = y1 - m_2 * x1
-                l1 = abs(-m_2 * px + py - b_2) / m.sqrt(1 + m_2**2)
-            else:
-                l1 = abs(x1 - px)
-        else:
-            d1 = abs(x1 - px)
-            l1 = abs(y1 - py)
-
-        x2, y2 = (self.vertex[2][0] + self.vertex[0][0]) / 2, (self.vertex[2][1] + self.vertex[0][1]) / 2
-        if self.normal[2][1] != 0:
-            m_1 = - self.normal[2][0] / self.normal[2][1]
-            b = self.vertex[2][1] - m_1 * self.vertex[2][0]
-            d2 = abs(-m_1 * px + py - b) / m.sqrt(1 + m_1**2)
-
-            if m_1 != 0:
-                m_2 = -1 / m_1
-                b_2 = y2 - m_2 * x2
-                l2 = abs(-m_2 * px + py - b_2) / m.sqrt(1 + m_2**2)
-            else:
-                l2 = abs(x2 - px)
-        else:
-            d2 = abs(x2 - px)
-            l2 = abs(y2 - py)
-
-        hit = [0, 0, 0]
-        w0 = m.sqrt((self.vertex[0][0] - self.vertex[1][0])**2 + (self.vertex[0][1] - self.vertex[1][1])**2)
-        if d0 <= pw / 2 and l0 <= w0 / 2 + pw / 2:
-            hit[0] = 1
-        w1 = m.sqrt((self.vertex[1][0] - self.vertex[2][0])**2 + (self.vertex[1][1] - self.vertex[2][1])**2)
-        if d1 <= pw / 2 and l1 <= w1 / 2 + pw / 2:
-            hit[1] = 1
-        w2 = m.sqrt((self.vertex[0][0] - self.vertex[2][0])**2 + (self.vertex[0][1] - self.vertex[2][1])**2)
-        if d2 <= pw / 2 and l2 <= w2 / 2 + pw / 2:
-            hit[2] = 1
         s = sum(hit)
         if s == 0:
             return False
-        if s == 1:
-            if hit[0]:
-                return (0, pw / 2 - d0 + 1)
-            if hit[1]:
-                return (1, pw / 2 - d1 + 1)
-            return (2, pw / 2 - d2 + 1)
-
-        n0 = self.normal[0]
-        n1 = self.normal[1]
-        n2 = self.normal[2]
-        if hit[0] and hit[1]:
-            if n0[0] * p.vel[0] + n0[1] * p.vel[1] < n1[0] * p.vel[0] + n1[1] * p.vel[1]:
-                return (0, 1)
-            return (1, 1)
-        if hit[1] and hit[2]:
-            if n1[0] * p.vel[0] + n1[1] * p.vel[1] < n2[0] * p.vel[0] + n2[1] * p.vel[1]:
-                return (1, 1)
-            return (2, 1)
-        if hit[2] and hit[0]:
-            if n2[0] * p.vel[0] + n2[1] * p.vel[1] < n0[0] * p.vel[0] + n0[1] * p.vel[1]:
-                return (2, 1)
-            return (0, 1)
+        for i in range(len(self.vertex)):
+            if s == 1:
+                if hit[i]:
+                    return (i, pw / 2 - d[i] + 1)
+            if s > 1:
+                j = (i + 1) % len(self.vertex)
+                if hit[i] and hit[j]:
+                    if self.normal[i][0]*p.vel[0] + self.normal[i][1]*p.vel[1] < self.normal[j][0]*p.vel[0] + self.normal[j][1]*p.vel[1]:
+                        return (i, 1)
+                    return (j, 1)
 
 class ParticleBox(App):
     def draw(self):
         self.wid.canvas.clear()
         with self.wid.canvas:
-            for i in self.triangles:
-                Color(*i.color)
-                Triangle(points=([i.vertex[0][0] + self.wid.x, i.vertex[0][1] + self.wid.y,
-                                 i.vertex[1][0] + self.wid.x, i.vertex[1][1] + self.wid.y,
-                                 i.vertex[2][0] + self.wid.x, i.vertex[2][1] + self.wid.y]))
-                Color((1, 1, 1))
-                if self.show_norms:
-                    Bezier(points=[(i.vertex[0][0] + i.vertex[1][0]) / 2 + self.wid.x,
-                                   (i.vertex[0][1] + i.vertex[1][1]) / 2 + self.wid.y,
-                                   (i.vertex[0][0] + i.vertex[1][0]) / 2 + i.normal[0][0] * 20 + self.wid.x,
-                                   (i.vertex[0][1] + i.vertex[1][1]) / 2 + i.normal[0][1] * 20 + self.wid.y])
-                    Bezier(points=[(i.vertex[1][0] + i.vertex[2][0]) / 2 + self.wid.x,
-                                   (i.vertex[1][1] + i.vertex[2][1]) / 2 + self.wid.y,
-                                   (i.vertex[1][0] + i.vertex[2][0]) / 2 + i.normal[1][0] * 20 + self.wid.x,
-                                   (i.vertex[1][1] + i.vertex[2][1]) / 2 + i.normal[1][1] * 20 + self.wid.y])
-                    Bezier(points=[(i.vertex[2][0] + i.vertex[0][0]) / 2 + self.wid.x,
-                                   (i.vertex[2][1] + i.vertex[0][1]) / 2 + self.wid.y,
-                                   (i.vertex[2][0] + i.vertex[0][0]) / 2 + i.normal[2][0] * 20 + self.wid.x,
-                                   (i.vertex[2][1] + i.vertex[0][1]) / 2 + i.normal[2][1] * 20 + self.wid.y])
-            for i in self.blocks:
-                Color(*i.color)
-                Rectangle(pos=(i.pos[0] + self.wid.x, i.pos[1] + self.wid.y), size=i.size)
+            for t in self.polygons:
+                p = []
+                indices = []
+                for i in range(len(t.vertex)):
+                    j = (i + 1) % len(t.vertex)
+                    p += [t.vertex[i][0] + self.wid.x, t.vertex[i][1] + self.wid.y, 0, 0]
+                    indices += [i]
+                    if self.show_norms:
+                        Color((1, 1, 1))
+                        Line(points=[(t.vertex[i][0] + t.vertex[j][0]) / 2 + self.wid.x,
+                                       (t.vertex[i][1] + t.vertex[j][1]) / 2 + self.wid.y,
+                                       (t.vertex[i][0] + t.vertex[j][0]) / 2 + t.normal[i][0] * 20 + self.wid.x,
+                                       (t.vertex[i][1] + t.vertex[j][1]) / 2 + t.normal[i][1] * 20 + self.wid.y], width=2)
+                Color(*t.color)
+                Mesh(vertices=p, indices=indices, mode='triangle_fan')
+
             for i in self.particles:
                 if i.hover or i.id == self.selected:
                     Color(1, 1, 1)
@@ -210,23 +139,10 @@ class ParticleBox(App):
                 g = m.pi * (-1, 1)[y1 > y2] / 2
 
             d = ((h1 + h2) / 2 - m.sqrt((x1 - x2 + (w1 - w2) / 2)**2 + (y1 - y2 + (h1 - h2) / 2)**2)) / 2
-            dx = m.cos(g) * d * (1, -1)[x2 > x1]
-            dy = m.sin(g) * d * (1, -1)[y2 > y1]
+            dx = m.cos(g) * d * (1, -1)[x2 > x1] + 1
+            dy = m.sin(g) * d * (1, -1)[y2 > y1] + 1
             p1.pos = [p1.pos[0] + dx, p1.pos[1] + dy]
             p2.pos = [p2.pos[0] - dx, p2.pos[1] - dy]
-
-    def b_collision(self, p, b):
-        if b.check_collision(p):
-            t = [(p.pos[0] + p.size[0] / 2 - i[0])**2 + (p.pos[1] + p.size[1] / 2 - i[1])**2 for i in b.faces]
-            n = b.normal[t.index(min(t))]
-            f = b.faces[t.index(min(t))]
-
-            n_dot_v = n[0] * p.vel[0] + n[1] * p.vel[1]
-
-            p.vel[0] = (p.vel[0] - 2 * n[0] * n_dot_v) * self.e_loss
-            p.pos[0] += n[0] * (min([abs(f[0] - p.pos[0]), abs(f[0] - p.pos[0] - p.size[0])]) + 1)
-            p.vel[1] = (p.vel[1] - 2 * n[1] * n_dot_v) * self.e_loss
-            p.pos[1] += n[1] * (min([abs(f[1] - p.pos[1]), abs(f[1] - p.pos[1] - p.size[1])]) + 1)
 
     def t_collision(self, p, t):
         v = t.check_collision(p)
@@ -261,10 +177,7 @@ class ParticleBox(App):
             for p2 in self.particles[i + 1:]:
                 self.p_collision(p1, p2)
 
-            for b in self.blocks:
-                self.b_collision(p1, b)
-
-            for t in self.triangles:
+            for t in self.polygons:
                 self.t_collision(p1, t)
 
             mx = self.mouse[0] - self.wid.x
@@ -373,10 +286,10 @@ class ParticleBox(App):
         self.pos_schedule = Clock.schedule_once(self.update_mouse, 0.1)
         self.update_window_size()
 
-        self.triangles = [Polygon3(200, 200, 250, 200, 200, 250, 0),
-                          Polygon3(400, 400, 480, 420, 380, 450, 1),
-                          Polygon3(560, 50, 680, 120, 550, 250, 1)]
-        self.blocks = []#[Block(200, 200, 200, 200, 0)]
+        self.polygons = [Polygon([(200, 200), (250, 200), (200, 250)], 0),
+                          Polygon([(400, 400), (480, 420), (380, 450)], 1),
+                          Polygon([(560, 50), (680, 120), (550, 250)], 1),
+                          Polygon([(100, 100), (150, 50), (200, 100), (200, 130), (100, 130)], 1)]
 
         self.particles = []
 
@@ -400,6 +313,7 @@ class ParticleBox(App):
         root.add_widget(layout)
 
         self.tick(0)
+        threading.Thread(target=self.draw).start()
 
         return root
 
